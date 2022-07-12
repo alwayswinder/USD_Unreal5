@@ -55,7 +55,8 @@ public class USDExtra : ModuleRules
 				"MeshDescription",
 				"StaticMeshDescription",
 				"Landscape",
-				"BSPUtils"
+				"BSPUtils",
+				"EditorFramework",
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

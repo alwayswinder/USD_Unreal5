@@ -144,10 +144,11 @@ UMyActorFolder* UUSDExtraConversionContext::GetWorldRootFolder()
 	UMyActorFolder* RootFolder = NewObject<UMyActorFolder>(GetTransientPackage());
 	RootFolder->FolderName = FName("Root");
 
-	FActorFolders::Get().ForEachFolder(*World, [this, &World, &OutItems](const FFolder& Folder)
+	FActorFolders::Get().ForEachFolder(*World, [this, RootFolder](const FFolder& Folder)
 	{
-		UE_LOG(LogUsd, Error, TEXT("UE Folder: %s"), Folder.GetLeafName());
-		TryAddActorFolder(RootFolder, Folder.GetLeafName());
+		UE_LOG(LogUsd, Error, TEXT("UE Folder: %s"), *(Folder.GetLeafName().ToString()));
+		TryAddActorFolder(RootFolder, *(Folder.GetLeafName().ToString()));
+		return true;
 	});
 	return RootFolder;
 }
@@ -159,8 +160,12 @@ bool UUSDExtraConversionContext::PathIsChildOf(const FString& InPotentialChild, 
 		UE_LOG( LogUsd, Error, TEXT( "No Valid World for Folders." ) );
 		return false;
 	}
-	//return FFolder::IsChildOf(InPotentialChild, InParent);
-	return false;
+	const int32 ParentLen = InParent.Len();
+
+	return 
+		InPotentialChild.Len() > ParentLen &&
+		InPotentialChild[ParentLen] == '/' &&
+		InPotentialChild.Left(ParentLen) == InParent;
 }
 
 TArray<FName> UUSDExtraConversionContext::GetWorldFoldersNames()
@@ -173,9 +178,11 @@ TArray<FName> UUSDExtraConversionContext::GetWorldFoldersNames()
 		return FolderNames;
 	}
 
-	/*FActorFolders ActorFolders = FActorFolders::Get();
-	const TMap<FName, FActorFolderProps> FolderProperties = ActorFolders.GetFolderPropertiesForWorld(*World);
-	FolderProperties.GetKeys(FolderNames);*/
+	FActorFolders::Get().ForEachFolder(*World, [this, &FolderNames](const FFolder& Folder)
+	{
+		FolderNames.Add(Folder.GetLeafName());
+		return true;
+	});
 	return FolderNames;
 }
 

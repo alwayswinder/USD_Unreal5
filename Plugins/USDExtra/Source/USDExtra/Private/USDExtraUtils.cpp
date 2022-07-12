@@ -9,7 +9,7 @@
 #include "EngineUtils.h"
 #include "InstancedFoliageActor.h"
 #include "USDExtraSettings.h"
-#include "IPythonScriptPlugin.h"
+//#include "IPythonScriptPlugin.h"
 #include "MeshDescription.h"
 #include "StaticMeshAttributes.h"
 #include "USDExtraExportOptions.h"
@@ -121,24 +121,24 @@ namespace USDExtraTokensType
 	const pxr::TfToken Max = pxr::TfToken("max");
 }
 
-inline bool FVerticesEqual(const FVector& V1, const FVector& V2)
+inline bool FVerticesEqual(FVector3f& V1, FVector3f& V2)
 {
-	if(FMath::Abs(V1.X - V2.X) > THRESH_POINTS_ARE_SAME * 4.0f)
+	if (FMath::Abs(V1.X - V2.X) > THRESH_POINTS_ARE_SAME * 4.0f)
 	{
-		return false;
+		return 0;
 	}
 
-	if(FMath::Abs(V1.Y - V2.Y) > THRESH_POINTS_ARE_SAME * 4.0f)
+	if (FMath::Abs(V1.Y - V2.Y) > THRESH_POINTS_ARE_SAME * 4.0f)
 	{
-		return false;
+		return 0;
 	}
 
-	if(FMath::Abs(V1.Z - V2.Z) > THRESH_POINTS_ARE_SAME * 4.0f)
+	if (FMath::Abs(V1.Z - V2.Z) > THRESH_POINTS_ARE_SAME * 4.0f)
 	{
-		return false;
+		return 0;
 	}
 
-	return true;
+	return 1;
 }
 
 inline FTransform ConvertAxes( const bool bZUp, const FTransform Transform )
@@ -166,10 +166,10 @@ inline FTransform ConvertAxes( const bool bZUp, const FTransform Transform )
 	return FTransform( Rotation, Translation, Scale );
 }
 
-inline void TexCoordsToVectors(const FVector& V0, const FVector2D& InUV0,
-								const FVector& V1, const FVector2D& InUV1,
-								const FVector& V2, const FVector2D& InUV2,
-								FVector* InBaseResult, FVector* InUResult, FVector* InVResult )
+inline void TexCoordsToVectors(const FVector3f& V0, const FVector2D& InUV0,
+								const FVector3f& V1, const FVector2D& InUV1,
+								const FVector3f& V2, const FVector2D& InUV2,
+								FVector3f* InBaseResult, FVector3f* InUResult, FVector3f* InVResult )
 {
 	{
 		const FVector2D UVOrigin = FVector2D::ZeroVector;
@@ -277,11 +277,11 @@ void UUSDExtraUtils::ExportLevelToUSD(UWorld* World, FString FilePath)
 	ExportOptions->StageOptions.MetersPerUnit = 1.0f;
 	ExportOptions->World = World;
 	ExportOptions->FileName = FilePath;
-	
-	if ( IPythonScriptPlugin::Get()->IsPythonAvailable() )
+
+	/*if (IPythonScriptPlugin::Get()->IsPythonAvailable())
 	{
-		IPythonScriptPlugin::Get()->ExecPythonCommand( TEXT( "import usd_extra_export_scripts; usd_extra_export_scripts.export_with_cdo_options()" ) );
-	}
+		IPythonScriptPlugin::Get()->ExecPythonCommand(TEXT("import usd_extra_export_scripts; usd_extra_export_scripts.export_with_cdo_options()"));
+	}*/
 
 	ExportOptions->World = nullptr;
 	ExportOptions->FileName = "";
@@ -446,73 +446,74 @@ void UUSDExtraUtils::CreateModelFromStaticMesh(UBrushComponent* BrushComponent, 
 	
 	FMeshDescription* MeshDescription = StaticMesh->GetMeshDescription(0);
 	FStaticMeshAttributes StaticMeshAttributes( *MeshDescription );
-	const TVertexAttributesRef< FVector > MeshDescriptionVertexPositions = StaticMeshAttributes.GetVertexPositions();
-	const TVertexInstanceAttributesRef<FVector2D> VertexInstanceUVs = StaticMeshAttributes.GetVertexInstanceUVs();
-
+	const TVertexAttributesRef< FVector3f > MeshDescriptionVertexPositions = StaticMeshAttributes.GetVertexPositions();
+	const TVertexInstanceAttributesRef<FVector2f> VertexInstanceUVs = StaticMeshAttributes.GetVertexInstanceUVs();
+	
 	Model->Polys->Element.Empty();
 
-	FTriangleArray& TriangleArray = MeshDescription->Triangles();
+	TMeshElementContainer<FTriangleID>& TriangleArray = MeshDescription->Triangles();
 	
-	if(TriangleArray.Num())
+	for (const FTriangleID& TriangleElementId : MeshDescription->Triangles().GetElementIDs())
 	{
-		for (const FTriangleID& TriangleID : TriangleArray.GetElementIDs())
-		{
-			FMeshTriangle MeshTriangle = TriangleArray[TriangleID];
+		// Get the 3 vertex instance ids of the triangle
+		const FVertexInstanceID& VI0 = MeshDescription->GetTriangleVertexInstance(TriangleElementId, 0);
+		const FVertexInstanceID& VI1 = MeshDescription->GetTriangleVertexInstance(TriangleElementId, 1);
+		const FVertexInstanceID& VI2 = MeshDescription->GetTriangleVertexInstance(TriangleElementId, 2);
 
-			const FVertexInstanceID VI0 = MeshTriangle.GetVertexInstanceID(0);
-			const FVertexInstanceID VI1 = MeshTriangle.GetVertexInstanceID(1);
-			const FVertexInstanceID VI2 = MeshTriangle.GetVertexInstanceID(2);
+		const FVertexID V0 = MeshDescription->GetVertexInstanceVertex(VI0);
+		const FVertexID V1 = MeshDescription->GetVertexInstanceVertex(VI1);
+		const FVertexID V2 = MeshDescription->GetVertexInstanceVertex(VI2);
 
-			const FVertexID V0 = MeshDescription->GetVertexInstanceVertex(VI0);
-			const FVertexID V1 = MeshDescription->GetVertexInstanceVertex(VI1);
-			const FVertexID V2 = MeshDescription->GetVertexInstanceVertex(VI2);
-			
-			FPoly* Polygon	= new(Model->Polys->Element) FPoly;
-						
-			Polygon->Init();
-			Polygon->iLink = Polygon - Model->Polys->Element.GetData();
-			//Polygon->Material = StaticMesh->LODModels[0].Elements[Triangle.MaterialIndex].Material;
-			Polygon->PolyFlags = PF_DefaultFlags;
-			//Polygon->SmoothingMask = Triangle.SmoothingMask;
+		FPoly* Polygon = new(Model->Polys->Element) FPoly;
 
-			//new(Polygon->Vertices) FVector(ActorToWorld.TransformPosition(Triangle.Vertices[2]));
-			//new(Polygon->Vertices) FVector(ActorToWorld.TransformPosition(Triangle.Vertices[1]));
-			//new(Polygon->Vertices) FVector(ActorToWorld.TransformPosition(Triangle.Vertices[0]));
+		Polygon->Init();
+		Polygon->iLink = Polygon - Model->Polys->Element.GetData();
+		//Polygon->Material = StaticMesh->LODModels[0].Elements[Triangle.MaterialIndex].Material;
+		Polygon->PolyFlags = PF_DefaultFlags;
+		//Polygon->SmoothingMask = Triangle.SmoothingMask;
 
-			new(Polygon->Vertices) FVector(MeshDescriptionVertexPositions[V2]);
-			new(Polygon->Vertices) FVector(MeshDescriptionVertexPositions[V1]);
-			new(Polygon->Vertices) FVector(MeshDescriptionVertexPositions[V0]);
-			
-			TexCoordsToVectors(Polygon->Vertices[2],FVector2D(VertexInstanceUVs.Get(VI0, 0).X * UModel::GetGlobalBSPTexelScale(),VertexInstanceUVs.Get(VI0, 0).Y * UModel::GetGlobalBSPTexelScale()),
-								Polygon->Vertices[1],FVector2D(VertexInstanceUVs.Get(VI1, 0).X * UModel::GetGlobalBSPTexelScale(),VertexInstanceUVs.Get(VI1, 0).Y * UModel::GetGlobalBSPTexelScale()),
-								Polygon->Vertices[0],FVector2D(VertexInstanceUVs.Get(VI2, 0).X * UModel::GetGlobalBSPTexelScale(),VertexInstanceUVs.Get(VI2, 0).Y * UModel::GetGlobalBSPTexelScale()),
-								&Polygon->Base,&Polygon->TextureU,&Polygon->TextureV);
+		//new(Polygon->Vertices) FVector(ActorToWorld.TransformPosition(Triangle.Vertices[2]));
+		//new(Polygon->Vertices) FVector(ActorToWorld.TransformPosition(Triangle.Vertices[1]));
+		//new(Polygon->Vertices) FVector(ActorToWorld.TransformPosition(Triangle.Vertices[0]));
 
-			Polygon->Finalize(nullptr,0);
-		}
+		new(Polygon->Vertices) FVector(MeshDescriptionVertexPositions[V2]);
+		new(Polygon->Vertices) FVector(MeshDescriptionVertexPositions[V1]);
+		new(Polygon->Vertices) FVector(MeshDescriptionVertexPositions[V0]);
+
+		TexCoordsToVectors(Polygon->Vertices[2], FVector2D(VertexInstanceUVs.Get(VI0, 0).X * UModel::GetGlobalBSPTexelScale(), VertexInstanceUVs.Get(VI0, 0).Y * UModel::GetGlobalBSPTexelScale()),
+			Polygon->Vertices[1], FVector2D(VertexInstanceUVs.Get(VI1, 0).X * UModel::GetGlobalBSPTexelScale(), VertexInstanceUVs.Get(VI1, 0).Y * UModel::GetGlobalBSPTexelScale()),
+			Polygon->Vertices[0], FVector2D(VertexInstanceUVs.Get(VI2, 0).X * UModel::GetGlobalBSPTexelScale(), VertexInstanceUVs.Get(VI2, 0).Y * UModel::GetGlobalBSPTexelScale()),
+			&Polygon->Base, &Polygon->TextureU, &Polygon->TextureV);
+
+		Polygon->Finalize(nullptr, 0);
 	}
 
 	Model->Linked = true;
 	BSPValidateBrush(Model,false,true);
 }
 
-void UUSDExtraUtils::GetMeshDescriptionFromBrush(::ABrush* Brush, const ::UModel* Model, ::FMeshDescription& MeshDescription, TArray<FStaticMaterial>& OutMaterials)
+void UUSDExtraUtils::GetMeshDescriptionFromBrush(ABrush* Brush, const ::UModel* Model, FMeshDescription& MeshDescription, TArray<FStaticMaterial>& OutMaterials)
 {
-	const TVertexAttributesRef<FVector> VertexPositions = MeshDescription.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
-	const TVertexInstanceAttributesRef<FVector2D> VertexInstanceUVs = MeshDescription.VertexInstanceAttributes().GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
-	const TEdgeAttributesRef<bool> EdgeHardnesses = MeshDescription.EdgeAttributes().GetAttributesRef<bool>(MeshAttribute::Edge::IsHard);
-	const TPolygonGroupAttributesRef<FName> PolygonGroupImportedMaterialSlotNames = MeshDescription.PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
-	
+	FStaticMeshAttributes Attributes(MeshDescription);
+	TVertexAttributesRef<FVector3f> VertexPositions = Attributes.GetVertexPositions();
+	TVertexInstanceAttributesRef<FVector3f> VertexInstanceNormals = Attributes.GetVertexInstanceNormals();
+	TVertexInstanceAttributesRef<FVector3f> VertexInstanceTangents = Attributes.GetVertexInstanceTangents();
+	TVertexInstanceAttributesRef<float> VertexInstanceBinormalSigns = Attributes.GetVertexInstanceBinormalSigns();
+	TVertexInstanceAttributesRef<FVector4f> VertexInstanceColors = Attributes.GetVertexInstanceColors();
+	TVertexInstanceAttributesRef<FVector2f> VertexInstanceUVs = Attributes.GetVertexInstanceUVs();
+	TEdgeAttributesRef<bool> EdgeHardnesses = Attributes.GetEdgeHardnesses();
+	TPolygonGroupAttributesRef<FName> PolygonGroupImportedMaterialSlotNames = Attributes.GetPolygonGroupMaterialSlotNames();
+
 	//Make sure we have one UVChannel
-	VertexInstanceUVs.SetNumIndices(1);
-	
+	VertexInstanceUVs.SetNumChannels(1);
+
 	// Calculate the local to world transform for the source brush.
-	// Change ToMatrixWithScale() to ToMatrixNoScale, preventing apply the scale twice.
-	const FMatrix	ActorToWorld = Brush ? Brush->ActorToWorld().ToMatrixNoScale() : FMatrix::Identity;
-	const FVector4	PostSub = Brush ? FVector4(Brush->GetActorLocation()) : FVector4(0, 0, 0, 0);
+	FMatrix	ActorToWorld = Brush ? Brush->ActorToWorld().ToMatrixWithScale() : FMatrix::Identity;
+	bool	ReverseVertices = 0;
+	FVector4	PostSub = Brush ? FVector4(Brush->GetActorLocation()) : FVector4(0, 0, 0, 0);
 
 	TMap<uint32, FEdgeID> RemapEdgeID;
-	const int32 NumPolys = Model->Polys->Element.Num();
+	int32 NumPolys = Model->Polys->Element.Num();
 	//Create Fill the vertex position
 	for (int32 PolygonIndex = 0; PolygonIndex < NumPolys; ++PolygonIndex)
 	{
@@ -525,8 +526,8 @@ void UUSDExtraUtils::GetMeshDescriptionFromBrush(::ABrush* Brush, const ::UModel
 			Material = UMaterial::GetDefaultMaterial(MD_Surface);
 		}
 
-		OutMaterials.AddUnique(FStaticMaterial(Material, Material->GetFName(), Material->GetFName()));
-		FPolygonGroupID CurrentPolygonGroupID = FPolygonGroupID::Invalid;
+		int32 MaterialIndex = OutMaterials.AddUnique(FStaticMaterial(Material, Material->GetFName(), Material->GetFName()));
+		FPolygonGroupID CurrentPolygonGroupID = INDEX_NONE;
 		for (const FPolygonGroupID PolygonGroupID : MeshDescription.PolygonGroups().GetElementIDs())
 		{
 			if (Material->GetFName() == PolygonGroupImportedMaterialSlotNames[PolygonGroupID])
@@ -535,27 +536,25 @@ void UUSDExtraUtils::GetMeshDescriptionFromBrush(::ABrush* Brush, const ::UModel
 				break;
 			}
 		}
-		if (CurrentPolygonGroupID == FPolygonGroupID::Invalid)
+		if (CurrentPolygonGroupID == INDEX_NONE)
 		{
 			CurrentPolygonGroupID = MeshDescription.CreatePolygonGroup();
 			PolygonGroupImportedMaterialSlotNames[CurrentPolygonGroupID] = Material->GetFName();
 		}
 
 		// Cache the texture coordinate system for this polygon.
-		FVector	TextureBase = Polygon.Base - (Brush ? Brush->GetPivotOffset() : FVector::ZeroVector),
+		FVector3f	TextureBase = Polygon.Base - (Brush ? (FVector3f)Brush->GetPivotOffset() : FVector3f::ZeroVector),
 			TextureX = Polygon.TextureU / UModel::GetGlobalBSPTexelScale(),
 			TextureY = Polygon.TextureV / UModel::GetGlobalBSPTexelScale();
 		// For each vertex after the first two vertices...
 		for (int32 VertexIndex = 2; VertexIndex < Polygon.Vertices.Num(); VertexIndex++)
 		{
-			// ReSharper disable once CppCompileTimeConstantCanBeReplacedWithBooleanConstant
-			constexpr bool ReverseVertices = 0;
-			FVector Positions[3];
-			Positions[ReverseVertices ? 0 : 2] = ActorToWorld.TransformPosition(Polygon.Vertices[0]) - PostSub;
-			Positions[1] = ActorToWorld.TransformPosition(Polygon.Vertices[VertexIndex - 1]) - PostSub;
-			Positions[ReverseVertices ? 2 : 0] = ActorToWorld.TransformPosition(Polygon.Vertices[VertexIndex]) - PostSub;
-			FVertexID VertexID[3] = { FVertexID::Invalid, FVertexID::Invalid, FVertexID::Invalid };
-			for (const FVertexID IterVertexID : MeshDescription.Vertices().GetElementIDs())
+			FVector3f Positions[3];
+			Positions[ReverseVertices ? 0 : 2] = FVector4f(ActorToWorld.TransformPosition((FVector)Polygon.Vertices[0]) - PostSub);
+			Positions[1] = FVector4f(ActorToWorld.TransformPosition((FVector)Polygon.Vertices[VertexIndex - 1]) - PostSub);
+			Positions[ReverseVertices ? 2 : 0] = FVector4f(ActorToWorld.TransformPosition((FVector)Polygon.Vertices[VertexIndex]) - PostSub);
+			FVertexID VertexID[3] = { INDEX_NONE, INDEX_NONE, INDEX_NONE };
+			for (FVertexID IterVertexID : MeshDescription.Vertices().GetElementIDs())
 			{
 				if (FVerticesEqual(Positions[0], VertexPositions[IterVertexID]))
 				{
@@ -577,21 +576,21 @@ void UUSDExtraUtils::GetMeshDescriptionFromBrush(::ABrush* Brush, const ::UModel
 
 			for (int32 CornerIndex = 0; CornerIndex < 3; ++CornerIndex)
 			{
-				if (VertexID[CornerIndex] == FVertexID::Invalid)
+				if (VertexID[CornerIndex] == INDEX_NONE)
 				{
 					VertexID[CornerIndex] = MeshDescription.CreateVertex();
 					VertexPositions[VertexID[CornerIndex]] = Positions[CornerIndex];
 				}
 				VertexInstanceIDs[CornerIndex] = MeshDescription.CreateVertexInstance(VertexID[CornerIndex]);
-				VertexInstanceUVs.Set(VertexInstanceIDs[CornerIndex], 0, FVector2D(
+				VertexInstanceUVs.Set(VertexInstanceIDs[CornerIndex], 0, FVector2f(
 					(Positions[CornerIndex] - TextureBase) | TextureX,
 					(Positions[CornerIndex] - TextureBase) | TextureY));
 			}
 
 			// Create a polygon with the 3 vertex instances
-			
+
 			TArray<FEdgeID> NewEdgeIDs;
-			MeshDescription.CreatePolygon(CurrentPolygonGroupID, VertexInstanceIDs, &NewEdgeIDs);
+			const FPolygonID NewPolygonID = MeshDescription.CreatePolygon(CurrentPolygonGroupID, VertexInstanceIDs, &NewEdgeIDs);
 			for (const FEdgeID& NewEdgeID : NewEdgeIDs)
 			{
 				//All edge are hard for BSP
@@ -629,7 +628,8 @@ void UUSDExtraUtils::BSPValidateBrush(UModel* Brush, bool ForceValidate, bool Do
 					&&	OtherPoly->PolyFlags == EdPoly->PolyFlags
 					&&	(OtherPoly->Normal | EdPoly->Normal)>0.9999 )
 					{
-						const float Dist = FVector::PointPlaneDist( OtherPoly->Vertices[0], EdPoly->Vertices[0], EdPoly->Normal );
+						const float Dist = FVector::PointPlaneDist( FVector3d(OtherPoly->Vertices[0]), 
+							FVector3d(EdPoly->Vertices[0]), FVector3d(EdPoly->Normal) );
 						if( Dist>-0.001 && Dist<0.001 )
 						{
 							OtherPoly->iLink = i;
@@ -662,9 +662,9 @@ void UUSDExtraUtils::PrintBrushPolyInfo(AActor* InActor)
 	{
 		const FPoly* Poly = &Model->Polys->Element[i];
 
-		FVector PolyBase = Poly->Base;
-		FVector PolyTextureU = Poly->TextureU;
-		FVector PolyTextureV = Poly->TextureV;
+		FVector3f PolyBase = Poly->Base;
+		FVector3f PolyTextureU = Poly->TextureU;
+		FVector3f PolyTextureV = Poly->TextureV;
 
 		UE_LOG(LogUsd, Log, TEXT("Poly Base: %s ; TextureU: %s ; TextureV: %s"), *PolyBase.ToString(), *PolyTextureU.ToString(), *PolyTextureV.ToString());
 	}
@@ -1092,7 +1092,7 @@ bool USDExtraToUnreal::ConvertPointInstancerPrim(const pxr::UsdStageRefPtr& Stag
 	}
 
 	FoliageActor->Modify();
-	TMap<UFoliageType*, FFoliageInfo*> InstancesFoliageType = FoliageActor->GetAllInstancesFoliageType();
+	TMap<UFoliageType*, FFoliageInfo*>  InstancesFoliageType = FoliageActor->GetAllInstancesFoliageType();
 	TArray<UFoliageType*> FoliageTypes;
 	InstancesFoliageType.GetKeys(FoliageTypes);
 	FoliageActor->RemoveFoliageType(FoliageTypes.GetData(), FoliageTypes.Num());	
@@ -1183,7 +1183,7 @@ bool USDExtraToUnreal::ConvertPointInstancerPrim(const pxr::UsdStageRefPtr& Stag
 						FoliageInstance.Location = InstanceTransform.GetLocation();
 						FoliageInstance.Rotation = InstanceTransform.GetRotation().Rotator();
 						FoliageInstance.PreAlignRotation = InstanceTransform.GetRotation().Rotator();
-						FoliageInstance.DrawScale3D = InstanceTransform.GetScale3D();
+						FoliageInstance.DrawScale3D = FVector3f(InstanceTransform.GetScale3D());
 
 						FVector start = FoliageInstance.Location + FVector(0, 0, 500);
 						FVector end = FoliageInstance.Location + FVector(0, 0, -500);
@@ -1193,7 +1193,7 @@ bool USDExtraToUnreal::ConvertPointInstancerPrim(const pxr::UsdStageRefPtr& Stag
 
 						FHitResult Hit;
 						static FName NAME_AddFoliageInstances = FName(TEXT("AddFoliageInstances"));
-						if (AInstancedFoliageActor::FoliageTrace(GWorld, Hit, FDesiredFoliageInstance(start, end),
+						if (AInstancedFoliageActor::FoliageTrace(GWorld, Hit, FDesiredFoliageInstance(start, end, nullptr),
 							NAME_AddFoliageInstances, true, OverrideGeometryFilter))
 						{
 							float HitWeight = 1.f;
@@ -1210,13 +1210,13 @@ bool USDExtraToUnreal::ConvertPointInstancerPrim(const pxr::UsdStageRefPtr& Stag
 							FoliageInstance.BaseComponent = BaseComponents[BaseComponentIndices[Index]];
 						}
 
-						NewFoliageInfo->AddInstance(FoliageActor, NewFoliageType, FoliageInstance);
+						NewFoliageInfo->AddInstance(NewFoliageType, FoliageInstance);
 					}
 
 					++Index;
 				}
 
-				NewFoliageInfo->Refresh(FoliageActor, true, false);
+				NewFoliageInfo->Refresh(true, false);
 			}
 		}
 	}
@@ -1477,7 +1477,7 @@ bool UnrealToUSDExtra::ConvertInstancedFoliageActor(const AInstancedFoliageActor
 	BaseComponents.Add(nullptr);
 	
 	int PrototypeIndex = 0;
-	for ( const TPair<UFoliageType*, TUniqueObj<FFoliageInfo>>& FoliagePair : Actor.FoliageInfos )
+	for ( const TPair<UFoliageType*, TUniqueObj<FFoliageInfo>>& FoliagePair : Actor.GetFoliageInfos() )
 	{
 		const FFoliageInfo& Info = FoliagePair.Value.Get();
 
@@ -1513,7 +1513,7 @@ bool UnrealToUSDExtra::ConvertInstancedFoliageActor(const AInstancedFoliageActor
 				const FFoliageInstancePlacementInfo* Instance = &Info.Instances[ InstanceIndex ];
 
 				// Convert axes
-				FTransform UETransform{ Instance->Rotation, Instance->Location, Instance->DrawScale3D };
+				FTransform UETransform{ Instance->Rotation, FVector(Instance->Location), FVector(Instance->DrawScale3D) };
 				FTransform USDTransform = ConvertAxes( StageInfo.UpAxis == EUsdUpAxis::ZAxis, UETransform );
 
 				FVector Translation = USDTransform.GetTranslation();
@@ -1758,7 +1758,7 @@ bool UnrealToUSDExtra::AddUSDExtraAttributesForFoliageComponent(const AInstanced
 	FScopedUsdAllocs Allocs;
 
 	TArray<UFoliageType*> FoliageTypes;
-	FoliageActor.FoliageInfos.GetKeys(FoliageTypes);
+	FoliageActor.GetFoliageInfos().GetKeys(FoliageTypes);
 
 	const pxr::UsdPrim Prototypes = UsdPrim.GetChild(pxr::TfToken("Prototypes"));
 

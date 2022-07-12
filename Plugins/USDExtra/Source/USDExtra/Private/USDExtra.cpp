@@ -5,6 +5,7 @@
 #include "USDMemory.h"
 #include "IDetailsView.h"
 #include "DetailLayoutBuilder.h"
+#include "EditorModeRegistry.h"
 
 #define LOCTEXT_NAMESPACE "FUSDExtraModule"
 
