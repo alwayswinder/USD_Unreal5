@@ -9,7 +9,7 @@
 #include "EngineUtils.h"
 #include "InstancedFoliageActor.h"
 #include "USDExtraSettings.h"
-//#include "IPythonScriptPlugin.h"
+#include "IPythonScriptPlugin.h"
 #include "MeshDescription.h"
 #include "StaticMeshAttributes.h"
 #include "USDExtraExportOptions.h"
@@ -278,10 +278,10 @@ void UUSDExtraUtils::ExportLevelToUSD(UWorld* World, FString FilePath)
 	ExportOptions->World = World;
 	ExportOptions->FileName = FilePath;
 
-	/*if (IPythonScriptPlugin::Get()->IsPythonAvailable())
+	if (IPythonScriptPlugin::Get()->IsPythonAvailable())
 	{
 		IPythonScriptPlugin::Get()->ExecPythonCommand(TEXT("import usd_extra_export_scripts; usd_extra_export_scripts.export_with_cdo_options()"));
-	}*/
+	}
 
 	ExportOptions->World = nullptr;
 	ExportOptions->FileName = "";
